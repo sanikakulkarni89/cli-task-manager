@@ -1,9 +1,7 @@
-# task_manager.py
 import click
 import sqlite3
 from datetime import datetime
 
-# Database setup
 def init_db():
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
@@ -19,13 +17,11 @@ def init_db():
     conn.commit()
     return conn
 
-# Command group
 @click.group()
 def cli():
     """Simple command-line task manager."""
     pass
 
-# Add task command
 @cli.command()
 @click.argument('title')
 @click.option('--priority', '-p', type=click.Choice(['low', 'medium', 'high']), default='medium')
@@ -40,13 +36,19 @@ def add(title, priority, due):
     conn.commit()
     click.echo(f"Added task: {title}")
 
-# List tasks command
 @cli.command()
 @click.option('--all', is_flag=True, help='Show completed tasks too')
-def list(all):
+@click.option('--sort', '-s', type= click.Choice(['due', 'priority', 'created']), default='due', help = 'Sort tasks by: due date, priority or creation date')
+def list(all, sort):
     """List all tasks."""
     conn = init_db()
     c = conn.cursor()
+
+    order_clause = {
+        'due': 'due_date ASC',
+        'priority': 'CASE priority WHEN "high" THEN 1 WHEN "medium" THEN 2 WHEN "low" THEN 3 END',
+        'created': 'created_at ASC'
+    }[sort]
     
     if all:
         c.execute('SELECT id, title, priority, due_date, completed FROM tasks')
@@ -59,14 +61,21 @@ def list(all):
         click.echo("No tasks found!")
         return
         
-    click.echo("ID | Title | Priority | Due Date | Status")
+    click.echo("  ID  |     Title      |    Priority       |    Due Date       |     Status  ")
     click.echo("-" * 50)
     
     for task in tasks:
         status = "Completed" if task[4] else "Pending"
-        click.echo(f"{task[0]} | {task[1]} | {task[2]} | {task[3] or 'N/A'} | {status}")
+        due_str = task[3] or 'N/A'
+        if task[3] and not task[4]:
+            try:
+                due_date = datetime.strptime(task[3], '%Y-%m-%d').date()
+                if(due_date < datetime.now().date()):
+                    due_str = f"OVERDUE: {due_str}"
+            except ValueError:
+                pass
+        click.echo(f"   {task[0]}  |    {task[1]}   |   {task[2]}  |    {due_str}     |   {status}    ")
 
-# Complete task command
 @cli.command()
 @click.argument('task_id', type=int)
 def complete(task_id):
